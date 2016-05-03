@@ -25,26 +25,26 @@ interface StatementInterface {
 	const RETURNS_SINGLE_RECORD = 3;
 	
 	/**
-	 * Query result is an named array which key is column and value is column value or null.
+	 * Query result is array of named arrays which key is column and value is column value or null.
 	 */
 	const RETURNS_SET_OF_RECORDS = 4;
 	
 	/**
-	 * Query does not return any result however affected rows are needed.
+	 * Query does not return any result however affected rows will be returned.
 	 */
 	const RETURNS_AFFECTED_ROWS = 5;
 
 	/**
-	 * This should not return null
+	 * This method should not return null
 	 * 
-	 * @return Returns collection of params in type of \Dal\Dao\StatementParamCollection
+	 * @return Returns collection of params in type of \PgPdo\Dao\StatementParamCollection
 	 */
 	public function getParams();
 
 	/**
 	 * Returns the return type of the statement after execution.
 	 * 
-	 * @return int \Dal\Dao\StatementInterface::RETURNS_*
+	 * @return int \PgPdo\Dao\StatementInterface::RETURNS_*
 	 */
 	public function getReturnType();
 

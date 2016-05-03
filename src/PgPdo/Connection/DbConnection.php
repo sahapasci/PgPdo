@@ -3,7 +3,7 @@
 namespace PgPdo\Connection;
 
 use \PDO;
-use \PgPdo\Config\ConfigInterface;
+use PgPdo\Config\ConfigInterface;
 use PgPdo\Exception\PgPdoConnectionException;
 
 /**
@@ -42,10 +42,18 @@ class DbConnection {
 	
 	}
 
-	private function checkConnection($message, $code) {
+	private function checkConnectionState() {
 
-		if (!$this->getPdo()) {
-			throw new PgPdoConnectionException($message, $code);
+		if ($this->isActive()) {
+			throw PgPdoConnectionException::connectionIsAlreadyActive();
+		}
+		
+		if (!$this->getConfig()) {
+			throw PgPdoConnectionException::configCannotBeNull();
+		}
+		
+		if (!$this->getConfig()->getDns()) {
+			throw PgPdoConnectionException::configDnsCannotBeNull();
 		}
 	
 	}
@@ -56,13 +64,7 @@ class DbConnection {
 	 */
 	public function connect() {
 
-		if ($this->isActive()) {
-			throw new PgPdoConnectionException('DB connection is already active."', 5);
-		}
-		
-		if (!$this->getConfig()) {
-			throw new PgPdoConnectionException('"config" cannot be null', 8);
-		}
+		$this->checkConnectionState();
 		
 		$dns = $this->getConfig()->getDns();
 		$username = $this->getConfig()->getUserName();
@@ -73,7 +75,7 @@ class DbConnection {
 			$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 			$this->setPdo($pdo);
 		} catch (PDOException $e) {
-			throw new PgPdoConnectionException('Cannot connect DB', 1, $e);
+			throw PgPdoConnectionException::cannotConnect($e);
 		}
 	
 	}
@@ -81,7 +83,7 @@ class DbConnection {
 	public function beginTransaction() {
 
 		if ($this->inTransaction()) {
-			throw new PgPdoConnectionException('DB connection is already in transaction active."', 6);
+			throw PgPdoConnectionException::connectionIsAlreadyInTransaction();
 		}
 		return $this->getPdo()->beginTransaction();
 	
@@ -105,7 +107,7 @@ class DbConnection {
 	public function setConfig(ConfigInterface $config) {
 
 		if ($this->getPdo()) {
-			throw new PgPdoConnectionException('"config" cannot be changed while db connection is active."', 2);
+			throw PgPdoConnectionException::configCannotBeChangedWhileDbIsActive();
 		}
 		
 		$this->config = $config;
@@ -114,7 +116,9 @@ class DbConnection {
 
 	public function commit() {
 
-		$this->checkConnection('Cannot "commit" because DB connection is not active.', 3);
+		if (!$this->getPdo()) {
+			throw PgPdoConnectionException::cannotCommitDbIsNotActive();
+		}
 		
 		return $this->getPdo()->commit();
 	
@@ -122,7 +126,9 @@ class DbConnection {
 
 	public function rollBack() {
 
-		$this->checkConnection('Cannot "rollback" because DB connection is not active.', 4);
+		if (!$this->getPdo()) {
+			throw PgPdoConnectionException::cannotRollbackDbIsNotActive();
+		}
 		
 		return $this->getPdo()->rollBack();
 	
@@ -140,7 +146,9 @@ class DbConnection {
 
 	public function prepare($statement) {
 
-		$this->checkConnection('Cannot "prepare" because DB connection is not active.', 7);
+		if (!$this->getPdo()) {
+			throw PgPdoConnectionException::cannotPrepareDbIsNotActive();
+		}
 		
 		return $this->getPdo()->prepare($statement);
 	

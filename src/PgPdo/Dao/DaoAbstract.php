@@ -14,6 +14,7 @@ use PgPdo\Exception\PgPdoDaoException;
  */
 abstract class DaoAbstract implements DaoInterface {
 	private $dbConnection;
+	private $fetchType = PDO::FETCH_ASSOC;
 
 	function __construct(DbConnection $dbConnection) {
 
@@ -34,27 +35,39 @@ abstract class DaoAbstract implements DaoInterface {
 	}
 
 	/**
+	 * Checks whether statement is ready for execution.
+	 * 
+	 * @param StatementInterface $statement Statement to be checked.
+	 * @throws PgPdoDaoException
+	 */
+	protected function checkStatement(StatementInterface $statement) {
+
+		if (!$statement) {
+			throw PgPdoDaoException::StatementCannotBeNull();
+		}
+		
+		if (!$statement->getSql()) {
+			throw PgPdoDaoException::StatementSqlCannotBeNull();
+		}
+		
+		if (!($statement->getParams() instanceof StatementParamCollection)) {
+			throw PgPdoDaoException::StatementParamsShouldBeStatementParamCollection();
+		}
+		
+		if (!$this->getDbConnection()) {
+			throw PgPdoDaoException::dbConnectionCannotBeNull();
+		}
+	
+	}
+
+	/**
 	 * Executes statement and returns the result according to statement type
 	 * 
 	 * @param StatementInterface $statement
 	 */
 	protected function execute(StatementInterface $statement) {
 
-		if (!$statement) {
-			throw new PgPdoDaoException("'statement' cannot be null.", 3);
-		}
-		
-		if (!$statement->getSql()) {
-			throw new PgPdoDaoException("'statement->sql' cannot be null.", 3);
-		}
-		
-		if (!($statement->getParams() instanceof StatementParamCollection)) {
-			throw new PgPdoDaoException("'statement->params' should be an instance of StatementParamCollection.", 4);
-		}
-		
-		if (!$this->getDbConnection()) {
-			throw new PgPdoDaoException("'dbConnection' cannot be null.", 5);
-		}
+		$this->checkStatement($statement);
 		
 		$pdoStatement = $this->getDbConnection()->prepare($statement->getSql());
 		$mapper = ($statement instanceof MappedStatementInterface) ? $statement->getMapper() : null;
@@ -65,27 +78,18 @@ abstract class DaoAbstract implements DaoInterface {
 			$bindSuccessful = $pdoStatement->bindParam($param->getName(), $paramValue, $param->getType());
 			
 			if (!$bindSuccessful) {
-				$daoException = new PgPdoDaoException("Error occured while binding param '{$param->getName()}'.", 1);
-				$daoException->setStatement($statement);
-				$daoException->setErrorInfo($pdoStatement->errorInfo());
-				throw $daoException;
+				throw PgPdoDaoException::errorOccuredWhileBindingParam($statement, $pdoStatement->errorInfo(), $param->getName());
 			}
 		}
 		try {
 			
 			$executeSuccessful = $pdoStatement->execute();
 		} catch (PDOException $e) {
-			$daoException = new PgPdoDaoException('Error occured while executing statement.', 6);
-			$daoException->setStatement($statement);
-			$daoException->setErrorInfo($pdoStatement->errorInfo());
-			throw $daoException;
+			throw PgPdoDaoException::errorOccuredWhileExecutionStatement($statement, $pdoStatement->errorInfo());
 		}
 		
 		if (!$executeSuccessful) {
-			$daoException = new PgPdoDaoException('Error occured while executing statement.', 2);
-			$daoException->setStatement($statement);
-			$daoException->setErrorInfo($pdoStatement->errorInfo());
-			throw $daoException;
+			throw PgPdoDaoException::statementFinishedWithAnError($statement, $pdoStatement->errorInfo());
 		}
 		
 		switch ($statement->getReturnType()) {
@@ -125,14 +129,14 @@ abstract class DaoAbstract implements DaoInterface {
 	private function checkMapper($mapper) {
 
 		if (!($mapper instanceof MapperInterface)) {
-			throw new PgPdoDaoException("'mapper' should be instance of Mapper interface.", 7);
+			throw PgPdoDaoException::mapperShouldImplementMapperInterface();
 		}
 	
 	}
 
 	protected function getStatementResultAsRecord(PDOStatement $pdoStatement, $mapper = null) {
 
-		$row = $pdoStatement->fetch(PDO::FETCH_ASSOC);
+		$row = $pdoStatement->fetch($this->getFetchType());
 		if ($row) {
 			if ($mapper) {
 				$this->checkMapper($mapper);
@@ -153,7 +157,7 @@ abstract class DaoAbstract implements DaoInterface {
 			$this->checkMapper($mapper);
 			$index = 0;
 			$recordSet = array();
-			while ($row = $pdoStatement->fetch(PDO::FETCH_ASSOC)) {
+			while ($row = $pdoStatement->fetch($this->getFetchType())) {
 				$mappedRow = $mapper->mapRow($row, $index);
 				if ($mappedRow) {
 					$recordSet[] = $mappedRow;
@@ -161,13 +165,33 @@ abstract class DaoAbstract implements DaoInterface {
 				$index++;
 			}
 		} else {
-			$recordSet = $pdoStatement->fetchAll(PDO::FETCH_ASSOC);
+			$recordSet = $pdoStatement->fetchAll($this->getFetchType());
 		}
 		if ($recordSet) {
 			return $recordSet;
 		}
 		
 		return null;
+	
+	}
+
+	public function getFetchType() {
+
+		return $this->fetchType;
+	
+	}
+
+	/**
+	 * Sets fetchType for executed statements.
+	 * Default value is PDO::FETCH_ASSOC.
+	 * 
+	 * @param int $fetchType PDO::FETCH_*
+	 */
+	public function setFetchType($fetchType) {
+
+		if ((int) $fetchType) {
+			$this->fetchType = (int) $fetchType;
+		}
 	
 	}
 }
